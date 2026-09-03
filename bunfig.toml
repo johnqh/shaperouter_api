@@ -1,0 +1,4 @@
+[test]
+preload = ["./tests/setup.ts"]
+
+# DATABASE_URL is set in tests/setup.ts or via environment variable in CI
