@@ -52,6 +52,12 @@ arithmetic, or API payloads.
 
 ### Data model (`shaperouter_api/src/db/schema.ts`)
 
+`initDatabase()` in `src/db/index.ts` **is** the migration system — there is no
+migration tool, and it runs on every server boot. Every table and column below
+must be added there as idempotent `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ...
+IF NOT EXISTS` statements as well as to `schema.ts`. A Drizzle definition alone
+produces a schema that typechecks and a database that lacks the table.
+
 **Removed**
 
 | Thing | Reason |
