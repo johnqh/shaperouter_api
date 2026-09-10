@@ -28,6 +28,7 @@
         "zod": "^3.24.0",
       },
       "devDependencies": {
+        "@sudobility/test-db-guard": "1.0.2",
         "@types/bun": "latest",
         "@types/node": "^24.10.1",
         "@types/sharp": "^0.32.0",
@@ -501,6 +502,8 @@
     "@sudobility/shaperouter_types": ["@sudobility/shaperouter_types@0.0.1", "", { "peerDependencies": { "@sudobility/types": "^1.9.67" } }, "sha512-7coxjGwIs2l8OacR6Ma+q/M1Vw8j+5PTPLee/TN8+hQ5BRFDLZsaYT/B7V2N+evgtkcvY/1/5xgB7I5BAUlLFg=="],
 
     "@sudobility/subscription_service": ["@sudobility/subscription_service@1.0.23", "", {}, "sha512-IbpWkMvyAirLZzX+7M1T74fVebWmyX/NCjyY2BCqL2jRQZGCEqb8JCVIYHXvqQd8gwx1E0foz+E9yb0SEWbngw=="],
+
+    "@sudobility/test-db-guard": ["@sudobility/test-db-guard@1.0.2", "", {}, "sha512-MFvX5e3VMprZLAw8iQIIfqZhy2Sod/wE6ytHBjMJHEE+IKHNSe9qPkXu6QpmZYVvwIOW7vOc84q0XkkKkF49Tw=="],
 
     "@sudobility/types": ["@sudobility/types@1.9.67", "", {}, "sha512-d+jk4L9i8VNvOnCJW/craqiiUTPH5aRq4KYe/QBrBU3mCcTfoYjgzzXopVQRcthiZ5dwQAEpdqCTQ0gAWRN6Ww=="],
 

@@ -5,7 +5,7 @@ import {
   beforeAll,
   beforeEach,
   afterAll,
-} from "bun:test";
+} from "vitest";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import routes from "../src/routes";

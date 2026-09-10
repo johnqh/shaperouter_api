@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestApp, createTestRequest, testUser } from "./utils";
 import { cleanupTestUser, createTestUserWithEntity } from "./utils/test-db";
 import { initDatabase } from "../src/db";

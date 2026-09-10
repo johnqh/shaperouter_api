@@ -121,10 +121,11 @@ bun run dev          # Start dev server with hot reload (--watch)
 bun run start        # Start production server
 bun run build        # Build for production (bun build)
 bun run start:prod   # Run production build
-bun run test         # Run unit tests, Vitest (tests/unit/)
+bun run test         # Unit tests, Vitest. Never touches a database; this is what CI runs.
 bun run test:watch   # Watch mode for unit tests
-bun run test:integration  # Run integration tests (requires test database)
-bun run test:setup   # Set up test database
+bun run test:db      # Database tests (*.db.test.ts), Vitest. MANUAL -- never run in CI.
+                     # Requires TEST_DATABASE_URL pointing at localhost; refuses any other host.
+bun run test:db:setup  # Create the local shaperouter_test database
 bun run lint         # Run ESLint
 bun run typecheck    # TypeScript type check
 bun run format       # Format with Prettier
@@ -577,17 +578,29 @@ const plaintext = decryptApiKey(encrypted, iv);
 
 ## Testing
 
-**Two runners, deliberately.** Unit tests (`tests/unit/`) use **Vitest**.
-Integration tests (`tests/*.test.ts`) use **`bun:test`**, because they exercise
-routes that import `hono/bun`, which needs the `Bun` global that Vitest's Node
-environment does not provide. Do not "fix" an integration test by converting it
-to Vitest imports -- it will fail with `ReferenceError: Bun is not defined`.
+**One runner, two configs.** Everything runs under Vitest.
+
+`bun run test` uses `vitest.config.ts`, which *excludes* `**/*.db.test.ts`.
+Database suites are never collected, so a CI run cannot reach a database.
+`bun run test:db` uses `vitest.db.config.ts`, which collects only those files
+and is run by hand.
+
+This repo previously ran integration tests under `bun:test` because they
+exercise routes importing `hono/bun`, which needs the `Bun` global Vitest's
+Node environment lacks. That constraint is gone: `tests/stubs/hono-bun.ts` is
+aliased in both Vitest configs and mirrors the real adapter, reading the peer
+address from the server object Hono receives as `env` -- the object these
+suites already construct themselves. Routes are unmodified.
+
+If you edit that stub, do not make `getConnInfo` return a fixed address. Each
+suite supplies its own server fixture and asserts on the address it chose; a
+constant silently overrides them.
 
 ```bash
-bun run test                       # Unit tests, Vitest (tests/unit/)
-bun run test:integration           # Integration tests, bun:test (requires database)
+bun run test                       # Unit tests, Vitest (excludes *.db.test.ts)
+bun run test:db                    # Database tests, Vitest (*.db.test.ts only, manual)
 bunx vitest run tests/unit/encryption.test.ts  # Single unit test file
-bun test tests/keys.test.ts            # Single integration test file
+bunx vitest run --config vitest.db.config.ts tests/keys.db.test.ts  # Single db test file
 ```
 
 ### Unit Test Pattern
@@ -701,7 +714,7 @@ bun run verify  # Runs: typecheck + lint + unit tests
 
 For integration tests (requires test database):
 ```bash
-bun run test:setup && bun run test:integration
+bun run test:db:setup && TEST_DATABASE_URL=postgresql://localhost:5432/shaperouter_test bun run test:db
 ```
 
 ## Gotchas
@@ -711,7 +724,11 @@ bun run test:setup && bun run test:integration
 - **`initDatabase()` is the migration system** -- there is no migration tool. It creates the schema, enums, tables, and indexes, then applies additive `ALTER TABLE ... IF NOT EXISTS` column migrations, and it runs on **every** server boot as well as via `bun run db:init`. Every statement is idempotent, so it is safe to re-run; it is also why a new column must be added there by hand, not just to `schema.ts`.
 - **`ENCRYPTION_KEY` must be 64-character hex** -- LLM API keys and storage credentials are encrypted at rest. Missing this causes runtime errors.
 - **Tables live in `shaperouter` PostgreSQL schema** -- not the default `public` schema. All table creation uses `shaperouterSchema.table()`.
-- **Two test runners** -- `bun run test` runs `tests/unit/` under **Vitest**; `bun run test:integration` runs `tests/*.test.ts` under **`bun:test`** and needs a real database. Integration tests must use `bun:test` imports: they load routes that import `hono/bun`, and the `Bun` global does not exist under Vitest.
+- **One test runner, two configs.** `bun run test` (`vitest.config.ts`) excludes `**/*.db.test.ts`; `bun run test:db` (`vitest.db.config.ts`) collects only those and is manual.
+- **Database tests are named `*.db.test.ts`.** The suffix is the only marker; directory is irrelevant.
+- **`TEST_DATABASE_URL`, not `DATABASE_URL`.** `tests/setup.db.ts` validates it points at exactly `localhost` (`127.0.0.1` is refused) before assigning `DATABASE_URL`. `tests/setup.ts` deletes `DATABASE_URL` outright, so a production URL in your shell can never reach a test.
+- **`hono/bun` is aliased to `tests/stubs/hono-bun.ts`** in both Vitest configs. It mirrors the real adapter; do not make it return a fixed address.
+- **`@sudobility` service packages are inlined** via `server.deps.inline`. They ship extensionless and directory-style relative imports that Bun resolves and Node's ESM resolver rejects.
 - **`@sudobility/*` packages do not load under Vitest** -- several ship ESM with extensionless relative imports (`export ... from "./init"`), which Node's resolver rejects for an externalized dependency. This is another reason integration tests run under `bun test`.
 - **Six `@sudobility/*` dependencies** -- version mismatches between them are the most common cause of type errors.
 - **Lazy Proxy-based db connection** -- the database is not connected at module load. First access triggers initialization. This is intentional for test isolation.
