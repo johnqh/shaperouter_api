@@ -223,7 +223,7 @@ describe("resolveCallerIp", () => {
     });
 
     it("prefers CF-Connecting-IP, the only header Cloudflare guarantees is the client", () => {
-      // Reproduces the real api.shaperouter.com chain: Cloudflare in front of
+      // Reproduces the real api.shaperouter.ai chain: Cloudflare in front of
       // Traefik. Traefik has no trustedIPs, so it discards Cloudflare's
       // X-Forwarded-For and replaces it with the edge address.
       const result = resolveCallerIp(

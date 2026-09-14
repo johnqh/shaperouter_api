@@ -55,16 +55,16 @@ curl -X POST https://api.shaperouter.com/api/v1/users/<uid>/api-keys \
 
 Supports 10 LLM providers: OpenAI, Anthropic, Gemini, Groq, Mistral, xAI, DeepSeek, Perplexity, Cohere, LM Studio.
 
-> Cohere is in the catalog but is currently routed through the OpenAI-compatible
-> provider, which its API does not match. It will not work until it gets a
-> dedicated provider class.
+> Cohere is reached through its OpenAI-compatible Compatibility API
+> (`https://api.cohere.ai/compatibility/v1`), with structured output requested via
+> `response_format` because that API has no `tool_choice`.
 
 ## Development
 
 ```bash
 bun run dev          # Dev server with hot reload
-bun test             # Unit tests (tests/unit/)
-bun run test:integration  # Integration tests (requires test DB)
+bun run test         # Unit tests (Vitest; never plain `bun test`)
+TEST_DATABASE_URL=postgresql://localhost:5432/shaperouter_test bun run test:db  # Database tests
 bun run typecheck    # TypeScript check
 bun run lint         # ESLint
 bun run verify       # Typecheck + lint + unit tests

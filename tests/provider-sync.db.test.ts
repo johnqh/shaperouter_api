@@ -8,9 +8,10 @@ import {
 } from "vitest";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import routes from "../src/routes";
+import { routes, service } from "../src/service";
 import { db, llmApiKeys } from "../src/db";
-import { entityHelpers } from "../src/lib/entity-helpers";
+
+const { entityHelpers } = service.ctx.entityAccess;
 import { cleanupTestUser, createTestUserWithEntity } from "./utils/test-db";
 import type { MockFirebaseUser } from "./utils/mock-auth";
 
@@ -351,7 +352,7 @@ describe("POST /entities/self/providers/sync-ip", () => {
     });
 
     it("uses CF-Connecting-IP on the real Cloudflare -> Traefik chain", async () => {
-      // Exactly what api.shaperouter.com sends: Traefik rewrote X-Forwarded-For
+      // Exactly what api.shaperouter.ai sends: Traefik rewrote X-Forwarded-For
       // with the Cloudflare edge, so only CF-Connecting-IP holds the client.
       const res = await post(
         {

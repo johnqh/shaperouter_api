@@ -23,92 +23,74 @@ Backend API server for ShapeRouter - an LLM structured output platform (v1.0.123
 - **Cloud Storage**: Google Cloud Storage + AWS S3 (user-provided)
 - **Testing**: Vitest v4.0
 
+## Shared packages
+
+Most of this API lives in `@sudobility/shapeshyft_service` (routes, middleware,
+shared tables and DDL) and `@sudobility/shapeshyft_engine` (LLM adapters,
+prompts, media, provider catalog, domain types). ShapeShyft runs on the same
+packages. The route, middleware, and LLM sections below describe code that now
+lives there.
+
+What stays here is what makes it ShapeRouter:
+
+- `src/service.ts` -- key prefixes (`shroute_`, `shrouteent`), service wiring, and
+  ShapeRouter-only routes via `mountShaperouterRoutes`.
+- `src/credentials/llm-key-resolver.ts` -- provider credentials come from the
+  entity's `llm_api_keys` row bound by `endpoints.llm_key_id`.
+- `src/db/llm-api-keys.ts` -- that table's DDL, its FK from `endpoints`, and the
+  `endpoints.provider` backfill.
+- `src/routes/keys.ts`, `src/routes/provider-sync.ts`, `src/lib/provider-url.ts`.
+
+ShapeRouter still binds endpoints to per-entity `llm_api_keys`, identical to
+ShapeShyft, so the two products could be verified equal after the extraction.
+The system-providers + credits design replaces `LlmKeyCredentialResolver`,
+`routes/keys.ts`, and `routes/provider-sync.ts` here -- not in the library.
+
+A fix to an adapter, prompt, or shared route goes in the library, then both APIs
+bump. Release order is in `shaperouter_app/scripts/push_all.sh`.
+
 ## Project Structure
 
 ```
 src/
 ├── index.ts                # Entry point, Hono app setup, health + readiness checks
-├── config/
-│   └── providers.ts        # LLM provider/model catalog (100 models), capabilities, pricing
+├── service.ts              # createShapeshyftService(...) wiring + ShapeRouter-only routes
+├── credentials/
+│   └── llm-key-resolver.ts # ProviderCredentialResolver backed by llm_api_keys
 ├── db/
-│   ├── index.ts            # Lazy Proxy-based db connection, initDatabase(), schema migration
+│   ├── index.ts            # Lazy Proxy-based db connection, initDatabase()
 │   ├── init.ts             # `bun run db:init` -- runs initDatabase() standalone, then exits
-│   ├── schema.ts           # Drizzle schema definitions (13 tables)
+│   ├── schema.ts           # Service tables re-exported under historical names + llm_api_keys
+│   ├── llm-api-keys.ts     # llm_api_keys DDL, endpoints FK, provider backfill
 │   └── migrate.ts          # One-off data migration script (user_id -> entity_id)
 ├── routes/
-│   ├── index.ts            # Route aggregator (public vs admin split)
-│   ├── ai.ts               # Public AI invoke + prompt endpoints (~875 lines)
-│   ├── providers.ts        # Public provider/model catalog (1h cache headers)
-│   ├── analytics.ts        # Usage analytics with date/project/endpoint filters
-│   ├── endpoints.ts        # Endpoint CRUD with ownership verification
-│   ├── entities.ts         # Entity CRUD + members + invitations management
-│   ├── entity-api-keys.ts  # Entity API key CRUD ("shrouteent_..."), hash-only storage
-│   ├── invitations.ts      # User-facing invitation accept/decline (by token)
-│   ├── keys.ts             # LLM provider API key CRUD (encrypted)
-│   ├── projects.ts         # Project CRUD with auto API key generation
-│   ├── provider-sync.ts    # Point self-hosted providers at the caller's IP
-│   ├── ratelimits.ts       # Rate limit config + usage history
-│   ├── settings.ts         # User settings with org path (upsert)
-│   ├── storage.ts          # Entity cloud storage config CRUD (GCS/S3)
-│   ├── user-api-keys.ts    # Personal API key CRUD ("shroute_..."), create/reveal
-│   └── users.ts            # /users/me, user info, subscription status
-├── middleware/
-│   ├── firebaseAuth.ts     # Three-credential auth (personal key, entity key, token)
-│   ├── rateLimit.ts        # Rate limit config (free/dev/pro/ultra tiers), lazy init
-│   └── subscription.ts     # Lazy SubscriptionHelper singleton + testMode reader
+│   ├── keys.ts             # LLM provider API key CRUD (encrypted), createKeysRouter(ctx)
+│   └── provider-sync.ts    # Point self-hosted providers at the caller's IP
+├── schemas/
+│   ├── keys.ts             # Zod schemas for LLM key routes
+│   └── endpoint-binding.ts # llm_key_id validation on endpoint create/update
 ├── services/
 │   ├── email.ts            # Resend invitation email with HTML template
-│   ├── firebase.ts         # Firebase Admin init with cached verifier (5min TTL)
-│   └── llm/
-│       ├── index.ts        # Provider factory createLLMProvider(), PROVIDER_ENDPOINTS map
-│       ├── types.ts        # LLMRequest (discriminated union), LLMResponse, ILLMProvider
-│       ├── openai.ts       # OpenAI provider (function calling, Responses API web search)
-│       ├── anthropic.ts    # Anthropic provider (tool_use, image base64/URL)
-│       ├── gemini.ts       # Gemini provider (responseSchema, Imagen/Veo stubs)
-│       ├── groq.ts         # Groq provider (Whisper transcription + extraction pipeline)
-│       └── custom.ts       # CustomLLMProvider for LM Studio (multi-format response parsing)
-├── schemas/
-│   └── index.ts            # All Zod validation schemas
+│   └── firebase.ts         # Firebase Admin init with cached verifier (5min TTL)
 └── lib/
-    ├── api-helper.ts       # ApiHelper with prompt(), request(), buildLegacyPrompts()
-    ├── api-key.ts           # Project API key generation, encryption, timing-safe validation
-    ├── encryption.ts        # AES-256-CBC encrypt/decrypt for API keys
-    ├── entity-api-key.ts    # "shrouteent_" prefix + header extraction for entity keys
-    ├── entity-helpers.ts    # entityHelpers singleton, EntityActor, getEntityWithPermission()
-    ├── env-helper.ts        # .env.local priority env var helper with caching
-    ├── prompt-builder.ts    # Schema-to-prompt conversion, provider-specific prompt configs
-    ├── provider-url.ts      # Client IP normalization + provider URL host rewriting
-    ├── public-project.ts    # Strips key ciphertext + IV from project rows before responding
-    ├── storage-utils.ts     # GCS/S3 upload with signed URLs, credential decryption
-    ├── user-api-key.ts      # "shroute_" key generation, hashing, header extraction
-    ├── user-api-key-cache.ts # 60s hash->owner cache with explicit invalidation
-    ├── media-constants.ts   # MIME type allowlists, size limits, provider-specific audio formats
-    ├── media-conversion.ts  # SVG/TIFF/HEIC/BMP/AVIF to PNG conversion via sharp
-    ├── media-utils.ts       # Media extraction from input data (data URLs, gs:// URLs), SSRF prevention
-    └── capability-validator.ts # Model capability validation for multimodal, Whisper validation
+    ├── encryption.ts       # ENCRYPTION_KEY-backed instance of the service's encryption
+    ├── env-helper.ts       # .env.local priority env var helper with caching
+    ├── peer-address.ts     # TCP peer via getConnInfo (hono/bun)
+    ├── provider-url.ts     # Provider URL host rewriting; re-exports client-IP helpers
+    └── storage-utils.ts    # GCS/S3 upload helpers (currently unreferenced)
 tests/
-├── ai.test.ts              # Integration: AI inference routes
-├── analytics.test.ts       # Integration: Analytics queries
-├── endpoints.test.ts       # Integration: Endpoint CRUD
-├── keys.test.ts            # Integration: API key management
-├── projects.test.ts        # Integration: Project CRUD
-├── setup.ts                # Test database setup
+├── *.db.test.ts            # Database suites (vitest.db.config.ts, localhost only)
+├── setup.ts / setup.db.ts  # Unit setup scrubs DATABASE_URL; DB setup requires localhost
+├── stubs/hono-bun.ts       # hono/bun stand-in for Vitest
 ├── unit/
-│   ├── api-key.test.ts     # Unit: Project API key generation/validation
-│   ├── capability-validator.test.ts # Unit: Model capability validation
-│   ├── encryption.test.ts  # Unit: AES-256-CBC encryption
-│   ├── entity-api-key.test.ts # Unit: Entity API key prefix/extraction
-│   ├── media-constants.test.ts # Unit: MIME types, size limits, regex
-│   ├── media-conversion.test.ts # Unit: Image format conversion
-│   ├── media-utils.test.ts # Unit: Media extraction from input data
-│   ├── prompt-builder.test.ts # Unit: Schema-to-prompt conversion
-│   ├── public-project.test.ts # Unit: Project row redaction
-│   └── user-api-key.test.ts # Unit: Personal API key generation/hashing
+│   ├── encryption.test.ts
+│   ├── provider-sync-plan.test.ts
+│   └── provider-url.test.ts
 └── utils/
     ├── index.ts            # Test utility exports
     ├── mock-auth.ts        # Mock Firebase auth for testing
-    ├── test-app.ts         # Test Hono app setup
-    └── test-db.ts          # Test database connection
+    ├── test-app.ts         # service.buildRoutes() with mocked auth
+    └── test-db.ts          # Test database helpers
 scripts/
 ├── fix-personal-entity-roles.ts # One-off migration script
 └── setup-test-db.sh        # Test database setup script
@@ -304,7 +286,7 @@ not a bare user id. Route handlers should pass `getActor(c)`:
 Uses a factory pattern (`createLLMProvider`) over 5 provider classes:
 - `OpenAIProvider` -- OpenAI itself, plus Mistral, xAI, DeepSeek, and Perplexity, each
   given its own base URL from `OPENAI_COMPATIBLE_BASE_URLS` so requests do not fall
-  through to `api.openai.com`. Cohere is also routed here but **does not work** (see below).
+  through to `api.openai.com`. Cohere is served here too, through its Compatibility API.
 - `AnthropicProvider` -- uses tool_use for structured output
 - `GeminiProvider` -- uses native `responseSchema` for structured JSON
 - `GroqProvider` -- dedicated Whisper transcription + extraction pipeline
@@ -315,6 +297,8 @@ Uses a factory pattern (`createLLMProvider`) over 5 provider classes:
 Each provider uses its native structured output mechanism:
 - OpenAI/Groq/compatible: Function calling -- `tools` plus a forced
   `tool_choice` on a function named `structured_response`
+- Cohere: `response_format: { type: "json_object", schema }` -- its Compatibility API
+  takes no `tool_choice` (engine `cohere-schema.ts`)
 - Anthropic: Tool use (`tools` + `tool_choice`)
 - Gemini: Response schema (`responseMimeType: "application/json"` + `responseSchema`)
 - Custom/LM Studio: System prompt instructions with JSON extraction
@@ -578,19 +562,14 @@ const plaintext = decryptApiKey(encrypted, iv);
 
 ## Testing
 
-**One runner, two configs.** Everything runs under Vitest.
-
-`bun run test` uses `vitest.config.ts`, which *excludes* `**/*.db.test.ts`.
-Database suites are never collected, so a CI run cannot reach a database.
-`bun run test:db` uses `vitest.db.config.ts`, which collects only those files
-and is run by hand.
-
-This repo previously ran integration tests under `bun:test` because they
-exercise routes importing `hono/bun`, which needs the `Bun` global Vitest's
-Node environment lacks. That constraint is gone: `tests/stubs/hono-bun.ts` is
-aliased in both Vitest configs and mirrors the real adapter, reading the peer
-address from the server object Hono receives as `env` -- the object these
-suites already construct themselves. Routes are unmodified.
+**One runner: Vitest.** Never run `bun test` in this repo. It is Bun's own
+runner: it ignores both vitest configs, collects the `*.db.test.ts` suites, and
+connects them to `DATABASE_URL` from `.env` -- a remote database -- where
+`initDatabase()` applies migrations and the suites create and delete rows.
+`bun run test` uses `vitest.config.ts`, which excludes `**/*.db.test.ts`;
+`bun run test:db` uses `vitest.db.config.ts` and requires a localhost
+`TEST_DATABASE_URL`. `hono/bun` is aliased to `tests/stubs/hono-bun.ts`, so no
+suite needs the Bun runtime.
 
 If you edit that stub, do not make `getConnInfo` return a fixed address. Each
 suite supplies its own server fixture and asserts on the address it chose; a
@@ -729,7 +708,7 @@ bun run test:db:setup && TEST_DATABASE_URL=postgresql://localhost:5432/shaperout
 - **`TEST_DATABASE_URL`, not `DATABASE_URL`.** `tests/setup.db.ts` validates it points at exactly `localhost` (`127.0.0.1` is refused) before assigning `DATABASE_URL`. `tests/setup.ts` deletes `DATABASE_URL` outright, so a production URL in your shell can never reach a test.
 - **`hono/bun` is aliased to `tests/stubs/hono-bun.ts`** in both Vitest configs. It mirrors the real adapter; do not make it return a fixed address.
 - **`@sudobility` service packages are inlined** via `server.deps.inline`. They ship extensionless and directory-style relative imports that Bun resolves and Node's ESM resolver rejects.
-- **`@sudobility/*` packages do not load under Vitest** -- several ship ESM with extensionless relative imports (`export ... from "./init"`), which Node's resolver rejects for an externalized dependency. This is another reason integration tests run under `bun test`.
+- **Never `bun test`.** It bypasses the vitest configs and the localhost guard and runs the database suites against `DATABASE_URL` from `.env`. `bun run verify` uses `bun run test` (Vitest) for this reason.
 - **Six `@sudobility/*` dependencies** -- version mismatches between them are the most common cause of type errors.
 - **Lazy Proxy-based db connection** -- the database is not connected at module load. First access triggers initialization. This is intentional for test isolation.
 - **Three key types, different jobs** -- `sk_live_...` is a *project* key that authenticates callers of a published AI endpoint; `shroute_...` is a *personal* key that authenticates its owner against the admin routes; `shrouteent_...` is an *entity* key that authenticates as the workspace itself for CI, scripts, and MCP clients. The prefix is what routes an incoming credential, so never reuse one.
@@ -745,8 +724,8 @@ bun run test:db:setup && TEST_DATABASE_URL=postgresql://localhost:5432/shaperout
 - **Rate limiting fails open** -- an unconfigured or throwing RevenueCat lookup logs and lets the request through. Site-admin-owned entities skip the check entirely.
 - **IP allowlist on endpoints** -- optional IPv4 allowlist. When set, requests from IPs not in the list are rejected.
 - **Provider factory reuses OpenAIProvider** -- Mistral, xAI, DeepSeek, and Perplexity use `OpenAIProvider` with their own base URLs, since their APIs are OpenAI-compatible.
-- **Cohere is listed but does not work** -- it is routed through `OpenAIProvider` with no base URL override, and Cohere's API is not OpenAI-compatible in either request or response shape. `services/llm/index.ts` carries a comment saying so. It needs a dedicated provider before the catalog entry is truthful.
-- **Groq Whisper has two-stage pipeline** -- transcription via Whisper, then optional structured extraction via a configurable second model/provider.
+- **Cohere uses `response_format`, not a tool call** -- it goes through `OpenAIProvider` at Cohere's Compatibility API (`https://api.cohere.ai/compatibility/v1`), which accepts `tools` but not `tool_choice`, so a call cannot be forced. `cohereResponseFormat` strips the JSON Schema keywords Cohere rejects (`minimum`/`maximum`, `minItems`/`maxItems`, `minLength`/`maxLength`, `allOf`/`oneOf`/`not`, most `format`s, anchored `pattern`s); a schema whose objects lack a `required` field falls back to plain JSON mode, and the system prompt still describes the full schema either way.
+- **Groq Whisper has two-stage pipeline** -- transcription via Whisper, then optional structured extraction via the endpoint's `transcription_extraction_model`. That model runs on the endpoint's own credential, so it must be a Groq model; any other is rejected with 400 rather than handed the Groq key.
 - **Imagen/Veo are stubs** -- Gemini generative models (Imagen, Veo) require Vertex AI SDK which is not yet integrated.
 - **Media conversion only for images** -- SVG, TIFF, HEIC, BMP, AVIF are converted to PNG via Sharp. Audio/video conversion is not supported.
 - **SSRF prevention** -- only `gs://` URLs are allowed for media input. HTTP/HTTPS URLs are rejected to prevent server-side request forgery.

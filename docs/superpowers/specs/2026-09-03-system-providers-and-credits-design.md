@@ -322,3 +322,24 @@ Not code, and blocking on step 3:
   returns `503`.
 - `SITEADMIN_EMAILS` (consumed by `isSiteAdmin`) populated, or no one can reach
   `/admin/*` to load that first key.
+
+## Amendment (2026-09-14): implement on shapeshyft_service
+
+`shaperouter_api` now runs on `@sudobility/shapeshyft_service` and
+`@sudobility/shapeshyft_engine` (see shapeshyft_api's 2026-09-13
+service-extraction spec). The line references to `ai.ts`, `endpoints.ts` and
+`schemas/index.ts` above refer to code that now lives in the library. Implement
+this design through the seams instead:
+
+| This spec says | Implement as |
+|---|---|
+| Key resolution from `system_providers` | `SystemProviderResolver implements ProviderCredentialResolver`; `resolve` reads the row for `endpoint.provider` and returns `{ ok: false, status: 503, message: "provider_unavailable: <provider>" }` when it is disabled or missing |
+| Endpoints carry `provider` instead of `llm_key_id` | `bindEndpoint` validates `body.provider` is configured and enabled and returns `{ ok: true, provider, llmKeyId: null }`. Pass `endpointBinding: { create: { provider: llmProviderSchema }, update: { provider: llmProviderSchema.optional() } }`. `endpoints.provider` already exists (nullable); `endpoints.llm_key_id` stays as an always-null column and is not removed |
+| Balance gate after `checkRateLimit` | `hooks.beforeInvoke` returns the `402 insufficient_credit` Response. It runs after rate limiting and never for `/prompt` |
+| Settlement transaction | `hooks.afterInvoke` inserts `credit_transactions` and updates `entity_credits` using the `tx` it is given; it receives `usageAnalyticsId` and `providerCostMicroCents` (already integer micro-cents). Throwing rolls back the analytics row and fails the request 500 |
+| `usage_analytics.provider_cost_micro_cents` / `charged_micro_cents` columns | Not in the shared table. Record both on the `credit_transactions` row, or propose adding them to `shapeshyft_service` as nullable columns |
+| `GET /providers` filtered to enabled providers | The library's providers router is public and unfiltered, and `mountAdmin` only reaches authenticated routes. Add an optional `providersFilter: () => Promise<LlmProvider[]>` to `ShapeshyftServiceConfig` in the library and apply it in `createProvidersRouter`; ShapeShyft omits it |
+| Delete `keys.ts`, `provider-sync.ts`, `provider-url.ts`, `llm_api_keys` | Delete them from `shaperouter_api` only, stop calling `initLlmApiKeys`, and drop `mountShaperouterRoutes`' two routes |
+
+Any hook that proves insufficient is changed in `shapeshyft_service`, never
+forked.

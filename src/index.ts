@@ -9,7 +9,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { bodyLimit } from "hono/body-limit";
 import { initDatabase, db } from "./db";
-import routes from "./routes";
+import { routes } from "./service";
 import { successResponse, errorResponse } from "@sudobility/shaperouter_types";
 import { getEnv } from "./lib/env-helper";
 import { sql } from "drizzle-orm";
@@ -91,7 +91,28 @@ initDatabase()
 
 export default {
   port,
-  fetch: app.fetch,
+  /*
+    Long provider calls must not be cut off by the server's idle timer.
+
+    Bun closes a connection after `idleTimeout` seconds of silence and caps that
+    value at 255 — and a request here is silent for its whole life, because the
+    provider is generating and nothing is written back until it finishes. A
+    local model answering with a dense score takes longer than that: measured
+    against LM Studio, ordinary parts returned in 86-175s while a drum kit,
+    which writes three times the notes per bar, ran past four minutes and the
+    socket died under it.
+
+    `server.timeout(req, 0)` lifts the limit for the request in hand rather than
+    for the process, so an ordinary request keeps the protection.
+  */
+  idleTimeout: 255,
+  fetch(
+    request: Request,
+    server: { timeout: (req: Request, seconds: number) => void }
+  ) {
+    server.timeout(request, 0);
+    return app.fetch(request, server);
+  },
 };
 
 // Export app for testing

@@ -5,6 +5,8 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
+    // Database-backed suites are never collected here. This is what keeps CI
+    // off a database — not a runtime skip inside the tests.
     exclude: ["**/node_modules/**", "**/dist/**", "**/*.db.test.ts"],
     // @sudobility service packages are compiled by tsc with extensionless and
     // directory-style relative imports. Bun's resolver accepts them, which is why
@@ -19,6 +21,7 @@ export default defineConfig({
           "@sudobility/auth_service",
           "@sudobility/entity_service",
           "@sudobility/ratelimit_service",
+          "@sudobility/shapeshyft_service",
           "@sudobility/subscription_service",
         ],
       },

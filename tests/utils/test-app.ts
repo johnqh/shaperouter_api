@@ -2,14 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { successResponse } from "@sudobility/shaperouter_types";
 import { mockFirebaseAuthMiddleware, type MockFirebaseUser, testUser } from "./mock-auth";
-import {
-  keysRouter,
-  projectsRouter,
-  endpointsRouter,
-  analyticsRouter,
-  aiRouter,
-  entitiesRouter,
-} from "../../src/routes";
+import { service, mountShaperouterRoutes } from "../../src/service";
 
 /**
  * Create a test app with mocked Firebase auth
@@ -33,26 +26,14 @@ export function createTestApp(mockUser: MockFirebaseUser = testUser, testUserId?
     );
   });
 
-  // Create routes with mocked auth
-  const routes = new Hono();
-
-  // Admin routes - apply mock auth middleware
-  const adminRoutes = new Hono();
-  adminRoutes.use("*", mockFirebaseAuthMiddleware(mockUser, testUserId));
-
-  // Mount admin routers - entity-based routes
-  adminRoutes.route("/entities/:entitySlug/keys", keysRouter);
-  adminRoutes.route("/entities/:entitySlug/projects", projectsRouter);
-  adminRoutes.route("/entities/:entitySlug/projects/:projectId/endpoints", endpointsRouter);
-  adminRoutes.route("/entities", entitiesRouter);
-  adminRoutes.route("/entities/:entitySlug/analytics", analyticsRouter);
-
-  routes.route("/", adminRoutes);
-
-  // Consumer routes (public, no auth)
-  routes.route("/ai", aiRouter);
-
-  app.route("/api/v1", routes);
+  // Same route tree as production, with the auth middleware mocked
+  app.route(
+    "/api/v1",
+    service.buildRoutes({
+      authMiddleware: mockFirebaseAuthMiddleware(mockUser, testUserId),
+      mountAdmin: mountShaperouterRoutes,
+    })
+  );
 
   return app;
 }

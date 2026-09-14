@@ -21,6 +21,7 @@ export default defineConfig({
           "@sudobility/auth_service",
           "@sudobility/entity_service",
           "@sudobility/ratelimit_service",
+          "@sudobility/shapeshyft_service",
           "@sudobility/subscription_service",
         ],
       },

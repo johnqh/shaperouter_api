@@ -416,4 +416,118 @@ describe("Endpoints Routes", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  /*
+   * Sampling temperature, per endpoint.
+   *
+   * Every provider adapter has read `LLMRequest.temperature` all along; what
+   * did not exist was a way to say what it should be, so every call went out
+   * at the `?? 0` default and the same prompt produced the same answer every
+   * time. That is right for extraction and classification and wrong for
+   * anything meant to be different twice — a generator of music, prose or
+   * ideas.
+   */
+  describe("temperature", () => {
+    it("stores what it was given, and hands it back", async () => {
+      const res = await createTestRequest(
+        app,
+        "POST",
+        `/api/v1/entities/${entitySlug}/projects/${projectId}/endpoints`,
+        {
+          body: {
+            endpoint_name: "hot",
+            display_name: "Hot",
+            llm_key_id: keyId,
+            temperature: 1.2,
+          },
+        },
+      );
+      expect(res.status).toBe(201);
+      const created = (await res.json()).data;
+      expect(created.temperature).toBe(1.2);
+
+      const read = await createTestRequest(
+        app,
+        "GET",
+        `/api/v1/entities/${entitySlug}/projects/${projectId}/endpoints/${created.uuid}`,
+      );
+      expect((await read.json()).data.temperature).toBe(1.2);
+    });
+
+    /*
+     * Null, not zero. An endpoint that says nothing about sampling is what
+     * every endpoint was until now, and the adapters differ on what that
+     * means: OpenAI and Gemini default it to 0, while Anthropic omits the
+     * field entirely because Opus 4.7+ and Sonnet 5 reject it outright. A
+     * column defaulting to 0 would start sending it to models that 400 on it.
+     */
+    it("defaults to saying nothing at all", async () => {
+      const res = await createTestRequest(
+        app,
+        "POST",
+        `/api/v1/entities/${entitySlug}/projects/${projectId}/endpoints`,
+        {
+          body: {
+            endpoint_name: "quiet",
+            display_name: "Quiet",
+            llm_key_id: keyId,
+          },
+        },
+      );
+      expect((await res.json()).data.temperature).toBeNull();
+    });
+
+    it("changes on update, and can be taken away again", async () => {
+      const created = await (
+        await createTestRequest(
+          app,
+          "POST",
+          `/api/v1/entities/${entitySlug}/projects/${projectId}/endpoints`,
+          {
+            body: {
+              endpoint_name: "changing",
+              display_name: "Changing",
+              llm_key_id: keyId,
+              temperature: 0.4,
+            },
+          },
+        )
+      ).json().then((r: { data: { uuid: string } }) => r.data);
+
+      const raised = await createTestRequest(
+        app,
+        "PUT",
+        `/api/v1/entities/${entitySlug}/projects/${projectId}/endpoints/${created.uuid}`,
+        { body: { temperature: 2 } },
+      );
+      expect((await raised.json()).data.temperature).toBe(2);
+
+      const cleared = await createTestRequest(
+        app,
+        "PUT",
+        `/api/v1/entities/${entitySlug}/projects/${projectId}/endpoints/${created.uuid}`,
+        { body: { temperature: null } },
+      );
+      expect((await cleared.json()).data.temperature).toBeNull();
+    });
+
+    it("refuses a value no provider accepts", async () => {
+      for (const temperature of [-0.1, 2.1]) {
+        const res = await createTestRequest(
+          app,
+          "POST",
+          `/api/v1/entities/${entitySlug}/projects/${projectId}/endpoints`,
+          {
+            body: {
+              endpoint_name: `bad-${Math.abs(temperature)}`.replace(".", "-"),
+              display_name: "Bad",
+              llm_key_id: keyId,
+              temperature,
+            },
+          },
+        );
+        expect(res.status, String(temperature)).toBe(400);
+      }
+    });
+  });
 });

@@ -15,7 +15,6 @@
  */
 
 import { Hono, type Context } from "hono";
-import { getConnInfo } from "hono/bun";
 import { and, eq } from "drizzle-orm";
 import { db, entities, llmApiKeys } from "../db";
 import {
@@ -31,25 +30,12 @@ import {
   planProviderSync,
   resolveCallerIp,
 } from "../lib/provider-url";
+import { readPeerAddress } from "../lib/peer-address";
 
 const providerSyncRouter = new Hono();
 
 /** The only provider type with a caller-supplied URL to keep current. */
 const SELF_HOSTED_PROVIDER = "lm_studio" as const;
-
-/**
- * Read the peer address off the connection.
- *
- * Returns null when the server is not reachable from the context -- which is
- * the case under the test harness, where no Bun server exists.
- */
-function readPeerAddress(c: Context): string | null {
-  try {
-    return getConnInfo(c).remote.address ?? null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Reject anything that did not authenticate with an entity API key.
