@@ -1,44 +1,27 @@
 /**
  * @fileoverview Database connection and initialization
- * @description Provides a lazy Proxy-based database connection that only
- * connects on first access. initDatabase() creates the shared tables via
- * @sudobility/shapeshyft_service, then ShapeRouter's own llm_api_keys table.
+ * @description A lazy connection (nothing connects at import) from
+ * @sudobility/shapeshyft_service. initDatabase() creates the shared tables,
+ * then ShapeRouter's own llm_api_keys table.
  */
 
-import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import postgres, { type Sql } from "postgres";
+import {
+  createLazyDatabase,
+  initServiceTables,
+} from "@sudobility/shapeshyft_service";
 import * as schema from "./schema";
 import { getRequiredEnv } from "../lib/env-helper";
-import { initServiceTables } from "@sudobility/shapeshyft_service";
 import { initLlmApiKeys } from "./llm-api-keys";
 
-// Lazy-initialized database connection
-let _client: Sql | null = null;
-let _db: PostgresJsDatabase<typeof schema> | null = null;
-
-function getClient(): Sql {
-  if (!_client) {
-    const connectionString = getRequiredEnv("DATABASE_URL");
-    _client = postgres(connectionString);
-  }
-  return _client;
-}
-
-// Export db as a getter to ensure lazy initialization
-export const db: PostgresJsDatabase<typeof schema> = new Proxy(
-  {} as PostgresJsDatabase<typeof schema>,
-  {
-    get(_, prop) {
-      if (!_db) {
-        _db = drizzle(getClient(), { schema });
-      }
-      return (_db as any)[prop];
-    },
-  }
+const database = createLazyDatabase(
+  () => getRequiredEnv("DATABASE_URL"),
+  schema
 );
 
+export const db = database.db;
+
 export async function initDatabase() {
-  const client = getClient();
+  const client = database.client();
 
   // Shared tables, enums, entity and rate-limit tables, additive columns
   await initServiceTables(client as any, {
@@ -52,13 +35,7 @@ export async function initDatabase() {
   console.log("Database tables initialized");
 }
 
-export async function closeDatabase() {
-  if (_client) {
-    await _client.end();
-    _client = null;
-    _db = null;
-  }
-}
+export const closeDatabase = database.close;
 
 // Re-export schema for convenience
 export * from "./schema";

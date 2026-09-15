@@ -1,6 +1,6 @@
 {
   "name": "shaperouter_api",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "module": "src/index.ts",
   "type": "module",
   "private": true,
@@ -40,9 +40,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@aws-sdk/client-s3": "^3.969.0",
-    "@aws-sdk/s3-request-presigner": "^3.969.0",
-    "@google-cloud/storage": "^7.18.0",
     "@google/generative-ai": "^0.21.0",
     "@hono/zod-validator": "^0.7.5",
     "@sudobility/auth_service": "^1.1.21",
@@ -50,7 +47,7 @@
     "@sudobility/ratelimit_service": "^1.0.39",
     "@sudobility/shaperouter_types": "^0.0.2",
     "@sudobility/shapeshyft_engine": "^1.0.4",
-    "@sudobility/shapeshyft_service": "^1.0.5",
+    "@sudobility/shapeshyft_service": "^1.0.6",
     "@sudobility/subscription_service": "^1.0.23",
     "@sudobility/types": "^1.9.67",
     "drizzle-orm": "^0.45.0",
@@ -59,7 +56,6 @@
     "hono": "^4.10.7",
     "openai": "^4.77.0",
     "postgres": "^3.4.7",
-    "resend": "^6.9.2",
     "sharp": "^0.35.4",
     "zod": "^3.24.0"
   },

@@ -6,43 +6,51 @@
  */
 
 import type { Hono } from "hono";
-import { createShapeshyftService } from "@sudobility/shapeshyft_service";
+import {
+  createFirebaseAuth,
+  createInvitationEmailSender,
+  createShapeshyftService,
+} from "@sudobility/shapeshyft_service";
 import { db } from "./db";
 import { serviceTables } from "./db/schema";
 import { encryption } from "./lib/encryption";
-import { getEnv } from "./lib/env-helper";
+import { env } from "./lib/env-helper";
 import { readPeerAddress } from "./lib/peer-address";
-import {
-  getUserInfo,
-  isAnonymousUser,
-  isSiteAdmin,
-  verifyIdToken,
-} from "./services/firebase";
-import { sendInvitationEmail } from "./services/email";
 import { createLlmKeyCredentialResolver } from "./credentials/llm-key-resolver";
 import { endpointBinding } from "./schemas/endpoint-binding";
 import { createKeysRouter } from "./routes/keys";
 import providerSyncRouter from "./routes/provider-sync";
 
-function optionalNumber(value: string | undefined): number | undefined {
-  return value ? Number(value) : undefined;
-}
+const isTestMode =
+  env.get("NODE_ENV") === "test" || env.get("BUN_ENV") === "test";
 
 export const service = createShapeshyftService({
   db: db as any, // drizzle instances can differ under bun link
   tables: serviceTables,
   keyPrefixes: { user: "shroute_", entity: "shrouteent" },
   encryption,
-  auth: { verifyIdToken, isSiteAdmin, isAnonymousUser, getUserInfo },
-  email: { sendInvitationEmail },
+  auth: createFirebaseAuth({
+    enabled: !isTestMode,
+    projectId: env.get("FIREBASE_PROJECT_ID"),
+    clientEmail: env.get("FIREBASE_CLIENT_EMAIL"),
+    privateKey: env.get("FIREBASE_PRIVATE_KEY"),
+    siteAdminEmails: env.get("SITEADMIN_EMAILS"),
+  }),
+  email: createInvitationEmailSender({
+    productName: "ShapeRouter",
+    resendApiKey: env.get("RESEND_API_KEY"),
+    senderEmail: env.get("RESEND_SENDER_EMAIL"),
+    senderName: env.get("RESEND_SENDER_NAME"),
+    appUrl: env.get("APP_URL"),
+  }),
   credentials: createLlmKeyCredentialResolver({
     db,
     encryption,
-    lmStudioTimeoutMs: optionalNumber(getEnv("LM_STUDIO_TIMEOUT_MS")),
+    lmStudioTimeoutMs: env.getNumber("LM_STUDIO_TIMEOUT_MS"),
   }),
   getPeerAddress: readPeerAddress,
   endpointBinding,
-  revenueCatApiKey: getEnv("REVENUECAT_API_KEY"),
+  revenueCatApiKey: env.get("REVENUECAT_API_KEY"),
 });
 
 /**

@@ -19,8 +19,7 @@ Backend API server for ShapeRouter - an LLM structured output platform (v1.0.123
 - **Validation**: Zod
 - **Encryption**: AES-256-CBC for API keys and storage credentials
 - **Image Processing**: Sharp (SVG/TIFF/HEIC/BMP/AVIF to PNG)
-- **Email**: Resend (transactional invitation emails)
-- **Cloud Storage**: Google Cloud Storage + AWS S3 (user-provided)
+- **Email**: Resend (invitation emails, sent by `@sudobility/shapeshyft_service`)
 - **Testing**: Vitest v4.0
 
 ## Shared packages
@@ -41,6 +40,13 @@ What stays here is what makes it ShapeRouter:
   `endpoints.provider` backfill.
 - `src/routes/keys.ts`, `src/routes/provider-sync.ts`, `src/lib/provider-url.ts`.
 
+Everything else here is configuration handed to the service: the server
+(`createApiServer` -- middleware, health checks, Bun idle timeout), the lazy
+database (`createLazyDatabase`), env reading (`createEnvReader`), Firebase auth
+(`createFirebaseAuth`) and the invitation email (`createInvitationEmailSender`)
+all come from `@sudobility/shapeshyft_service`. New backend logic belongs there
+unless it is provider API key management.
+
 ShapeRouter still binds endpoints to per-entity `llm_api_keys`, identical to
 ShapeShyft, so the two products could be verified equal after the extraction.
 The system-providers + credits design replaces `LlmKeyCredentialResolver`,
@@ -53,12 +59,12 @@ bump. Release order is in `shaperouter_app/scripts/push_all.sh`.
 
 ```
 src/
-├── index.ts                # Entry point, Hono app setup, health + readiness checks
+├── index.ts                # Entry point: createApiServer(...) with this product's name, routes, db
 ├── service.ts              # createShapeshyftService(...) wiring + ShapeRouter-only routes
 ├── credentials/
 │   └── llm-key-resolver.ts # ProviderCredentialResolver backed by llm_api_keys
 ├── db/
-│   ├── index.ts            # Lazy Proxy-based db connection, initDatabase()
+│   ├── index.ts            # createLazyDatabase(...), initDatabase() (service tables + llm_api_keys)
 │   ├── init.ts             # `bun run db:init` -- runs initDatabase() standalone, then exits
 │   ├── schema.ts           # Service tables re-exported under historical names + llm_api_keys
 │   ├── llm-api-keys.ts     # llm_api_keys DDL, endpoints FK, provider backfill
@@ -69,15 +75,11 @@ src/
 ├── schemas/
 │   ├── keys.ts             # Zod schemas for LLM key routes
 │   └── endpoint-binding.ts # llm_key_id validation on endpoint create/update
-├── services/
-│   ├── email.ts            # Resend invitation email with HTML template
-│   └── firebase.ts         # Firebase Admin init with cached verifier (5min TTL)
 └── lib/
     ├── encryption.ts       # ENCRYPTION_KEY-backed instance of the service's encryption
-    ├── env-helper.ts       # .env.local priority env var helper with caching
+    ├── env-helper.ts       # This process's createEnvReader(...) (.env.local wins)
     ├── peer-address.ts     # TCP peer via getConnInfo (hono/bun)
-    ├── provider-url.ts     # Provider URL host rewriting; re-exports client-IP helpers
-    └── storage-utils.ts    # GCS/S3 upload helpers (currently unreferenced)
+    └── provider-url.ts     # Provider URL host rewriting; re-exports client-IP helpers
 tests/
 ├── *.db.test.ts            # Database suites (vitest.db.config.ts, localhost only)
 ├── setup.ts / setup.db.ts  # Unit setup scrubs DATABASE_URL; DB setup requires localhost
@@ -638,9 +640,6 @@ describe("Things API", () => {
 | `@google/generative-ai` | ^0.21.0 | Gemini API client |
 | `groq-sdk` | ^0.37.0 | Groq API client (Whisper) |
 | `sharp` | ^0.34.5 | Image conversion |
-| `resend` | ^6.9.2 | Email delivery |
-| `@google-cloud/storage` | ^7.18.0 | GCS uploads |
-| `@aws-sdk/client-s3` | ^3.969.0 | S3 uploads |
 | `@sudobility/shaperouter_types` | ^1.0.58 | Shared TypeScript types |
 | `@sudobility/entity_service` | ^1.0.41 | Entity/organization management |
 | `@sudobility/ratelimit_service` | ^1.0.39 | Rate limiting |
