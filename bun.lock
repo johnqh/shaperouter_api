@@ -11,7 +11,7 @@
         "@sudobility/auth_service": "^1.1.21",
         "@sudobility/entity_service": "^1.0.41",
         "@sudobility/ratelimit_service": "^1.0.39",
-        "@sudobility/shaperouter_types": "^0.0.2",
+        "@sudobility/shaperouter_types": "^0.0.3",
         "@sudobility/shapeshyft_engine": "^1.0.4",
         "@sudobility/shapeshyft_service": "^1.0.6",
         "@sudobility/subscription_service": "^1.0.23",
@@ -313,7 +313,7 @@
 
     "@sudobility/ratelimit_service": ["@sudobility/ratelimit_service@1.0.39", "", { "peerDependencies": { "@sudobility/types": "^1.9.67", "drizzle-orm": "^0.45.0", "hono": "^4.0.0", "postgres": "^3.4.0" } }, "sha512-/GA+c4NezQp0/CfrJyf60KclOHK/MxNDhKAhZLWLSb3U5/1gQ1Mp9rI3lT53kNe/DPVKX7mshfudAk51Jimbmg=="],
 
-    "@sudobility/shaperouter_types": ["@sudobility/shaperouter_types@0.0.2", "", { "dependencies": { "@sudobility/shapeshyft_engine": "^1.0.4" }, "peerDependencies": { "@sudobility/types": "^1.9.67" } }, "sha512-H+NBlJjQG84Hb7LqZ5QtzlhDwjHuB/ULt1PxFQgKxGa3mXdAMY6rrUUQADYiac49L4QnHLVBy45yRGgq/OsLhA=="],
+    "@sudobility/shaperouter_types": ["@sudobility/shaperouter_types@0.0.3", "", { "dependencies": { "@sudobility/shapeshyft_engine": "^1.0.4" }, "peerDependencies": { "@sudobility/types": "^1.9.67" } }, "sha512-pUAg72myuz7clU8E3GpDMK9PCnP8sMFBRzPzEask1PjjquMvingGcHT8vhBYOtLJSdQ7FKzsNzE3AXOI4nu2tw=="],
 
     "@sudobility/shapeshyft_engine": ["@sudobility/shapeshyft_engine@1.0.4", "", { "dependencies": { "@sudobility/types": "^1.9.67" }, "peerDependencies": { "@anthropic-ai/sdk": "^0.39.0", "@google/generative-ai": "^0.21.0", "groq-sdk": "^0.37.0", "openai": "^4.77.0", "sharp": "^0.35.4" }, "optionalPeers": ["@anthropic-ai/sdk", "@google/generative-ai", "groq-sdk", "openai", "sharp"] }, "sha512-tXMKiE7YMHsS7m+VUwiR2Z3H6dyLd/y8BT5e77c4sPevvLLs4JtGciValvY2EtZ3xRhqu8AFtMWi7aQ5p0gl9w=="],
 
