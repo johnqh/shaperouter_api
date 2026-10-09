@@ -5,7 +5,7 @@
  * endpoints.ts and ai.ts returned before the service extraction.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type {
   Encryption,
   ProviderCredentialResolver,
@@ -15,6 +15,8 @@ import { db as appDb, llmApiKeys } from "../db";
 export const LLM_KEY_NOT_OWNED =
   "LLM key not found or doesn't belong to this entity";
 export const LLM_KEY_INACTIVE = "LLM API key not found or inactive";
+export const noActiveProviderKey = (provider: string) =>
+  `No active ${provider} API key for this organization`;
 
 export function createLlmKeyCredentialResolver(opts: {
   db: typeof appDb;
@@ -32,6 +34,19 @@ export function createLlmKeyCredentialResolver(opts: {
         and(eq(llmApiKeys.entity_id, entityId), eq(llmApiKeys.uuid, keyId))
       );
     return rows[0] ?? null;
+  }
+
+  function credentialFrom(key: typeof llmApiKeys.$inferSelect) {
+    return {
+      ok: true as const,
+      provider: key.provider,
+      apiKey:
+        key.encrypted_api_key && key.encryption_iv
+          ? encryption.decryptApiKey(key.encrypted_api_key, key.encryption_iv)
+          : undefined,
+      endpointUrl: key.endpoint_url ?? undefined,
+      timeoutMs: opts.lmStudioTimeoutMs,
+    };
   }
 
   return {
@@ -64,7 +79,32 @@ export function createLlmKeyCredentialResolver(opts: {
       return { ok: true, provider: key.provider, llmKeyId: key.uuid };
     },
 
-    async resolve({ endpoint }) {
+    async resolve({ entityId, endpoint, provider }) {
+      // A call-time override (`llm_provider`): the entity's own active key for
+      // that provider, scoped by entity, the most recently updated if several.
+      if (provider) {
+        const [key] = await db
+          .select()
+          .from(llmApiKeys)
+          .where(
+            and(
+              eq(llmApiKeys.entity_id, entityId),
+              eq(llmApiKeys.provider, provider),
+              eq(llmApiKeys.is_active, true)
+            )
+          )
+          .orderBy(desc(llmApiKeys.updated_at), desc(llmApiKeys.created_at))
+          .limit(1);
+        if (!key) {
+          return {
+            ok: false,
+            status: 400,
+            message: noActiveProviderKey(provider),
+          };
+        }
+        return credentialFrom(key);
+      }
+
       // Not scoped by entity, exactly as before: the binding was checked when
       // it was written, and the foreign key holds it.
       const rows = endpoint.llm_key_id
@@ -83,16 +123,7 @@ export function createLlmKeyCredentialResolver(opts: {
         return { ok: false, status: 500, message: LLM_KEY_INACTIVE };
       }
 
-      return {
-        ok: true,
-        provider: key.provider,
-        apiKey:
-          key.encrypted_api_key && key.encryption_iv
-            ? encryption.decryptApiKey(key.encrypted_api_key, key.encryption_iv)
-            : undefined,
-        endpointUrl: key.endpoint_url ?? undefined,
-        timeoutMs: opts.lmStudioTimeoutMs,
-      };
+      return credentialFrom(key);
     },
   };
 }

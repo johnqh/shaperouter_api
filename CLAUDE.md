@@ -190,7 +190,7 @@ Everything else is under `/api/v1/`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET/POST | `/ai/:entitySlug/:projectName/:endpointName` | Execute AI endpoint (project API key auth) |
-| GET/POST | `/ai/:entitySlug/:projectName/:endpointName/prompt` | Render the prompt without calling the LLM |
+| GET/POST | `/ai/:entitySlug/:projectName/:endpointName/prompt` | Render the prompt without calling the LLM; with `llm_provider`, also the exact provider request (`request`) |
 | GET | `/providers` | List all LLM providers |
 | GET | `/providers/:provider` | One provider's config |
 | GET | `/providers/:provider/models` | Models for a provider, with capabilities and pricing |
@@ -338,7 +338,7 @@ call decides whether live data is actually needed, then the answer is produced w
 
 ### Reserved Input Fields
 
-Three input keys are consumed by ShapeRouter rather than passed to the model. They
+These input keys are consumed by ShapeRouter rather than passed to the model. They
 are stripped in one pass by `extractReservedFields` (`src/lib/reserved-fields.ts`)
 **before** any prompt is built, so none of them can leak into the prompt text:
 
@@ -347,9 +347,25 @@ are stripped in one pass by `extractReservedFields` (`src/lib/reserved-fields.ts
 | `context` | Overrides the endpoint's stored context for this call. Only a non-empty string counts. |
 | `web_search` | Can only *disable* search on an endpoint that already has it enabled -- never enable it. |
 | `max_output_tokens` | Lowers the endpoint's output ceiling for this call. Clamped to the endpoint's own value, so it can never raise it. |
+| `llm_provider` | Call-time provider override (any `LlmProvider` id; anything else is a 400). Invoke runs on the entity's ACTIVE `llm_api_keys` row for that provider (most recently updated if several), or fails 400 `No active <provider> API key for this organization`. Absent: the endpoint's bound key, as before. |
+| `llm_model` | Model for the override; omitted, the provider catalog's `defaultModel`. Ignored without `llm_provider`. |
 
-Adding a fourth is a small breaking-change surface for callers already using that
+Adding another is a small breaking-change surface for callers already using that
 key as real input, so weigh it before doing so.
+
+### `/prompt` with `llm_provider`
+
+`/prompt` always returns `{ prompt }`. Given `llm_provider` it also returns
+`request`, an `AiProviderRequest` -- `{ provider, model, method: "POST", url,
+headers, auth: { header, prefix }, body }` -- describing the call invoke would
+make: the same system/user prompts (`buildLegacyPrompts`), the same body builder
+the adapters send with (`buildProviderRequest` from
+`@sudobility/shapeshyft_engine/core`). No stored key is needed or looked up; the
+caller adds its own key as `auth.header: auth.prefix + key`. OpenAI-compatible
+providers get `{ header: "Authorization", prefix: "Bearer " }`, Anthropic
+`{ header: "x-api-key", prefix: "" }` plus `anthropic-version`. Not described:
+web search (several Responses API calls) and Gemini, Jev, LM Studio, Whisper
+(400). The reply is read with `parseProviderResponse` from the same subpath.
 
 ### Runaway Protection
 

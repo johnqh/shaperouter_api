@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, initDatabase, llmApiKeys } from "../src/db";
 import { encryption } from "../src/lib/encryption";
 import {
   createLlmKeyCredentialResolver,
   LLM_KEY_INACTIVE,
   LLM_KEY_NOT_OWNED,
+  noActiveProviderKey,
 } from "../src/credentials/llm-key-resolver";
 import {
   cleanupTestUser,
@@ -112,6 +113,88 @@ describe("LlmKeyCredentialResolver", () => {
         message: LLM_KEY_INACTIVE,
       });
       expect(LLM_KEY_INACTIVE).toBe("LLM API key not found or inactive");
+    });
+  });
+
+  describe("resolve with a provider override", () => {
+    async function addKey(
+      owner: string,
+      provider: "openrouter" | "deepseek",
+      secret: string,
+      isActive = true
+    ) {
+      const { encrypted, iv } = encryption.encryptApiKey(secret);
+      const key = await createTestLlmKey(owner, {
+        key_name: secret,
+        provider,
+        encrypted_api_key: encrypted,
+        encryption_iv: iv,
+      });
+      if (!isActive) {
+        await db
+          .update(llmApiKeys)
+          .set({ is_active: false })
+          .where(eq(llmApiKeys.uuid, key.uuid));
+      }
+      return key;
+    }
+
+    it("returns the entity's active key for that provider, not the bound one", async () => {
+      const endpoint = await endpointBoundToKey();
+      await addKey(entityId, "openrouter", "sk-or");
+      expect(
+        await resolver.resolve({ entityId, endpoint, provider: "openrouter" })
+      ).toEqual({
+        ok: true,
+        provider: "openrouter",
+        apiKey: "sk-or",
+        endpointUrl: undefined,
+        timeoutMs: 900_000,
+      });
+    });
+
+    it("prefers the most recently updated active key", async () => {
+      const endpoint = await endpointBoundToKey();
+      const older = await addKey(entityId, "deepseek", "sk-old");
+      await addKey(entityId, "deepseek", "sk-new");
+      await addKey(entityId, "deepseek", "sk-off", false);
+      await db
+        .update(llmApiKeys)
+        // In SQL: the column is a timestamp without time zone, set by now()
+        .set({ updated_at: sql`now() - interval '1 minute'` })
+        .where(eq(llmApiKeys.uuid, older.uuid));
+      const resolved = await resolver.resolve({
+        entityId,
+        endpoint,
+        provider: "deepseek",
+      });
+      expect(resolved.ok && resolved.apiKey).toBe("sk-new");
+    });
+
+    it("refuses with 400 when the entity has no active key for it", async () => {
+      const endpoint = await endpointBoundToKey();
+      await addKey(entityId, "openrouter", "sk-off", false);
+      expect(
+        await resolver.resolve({ entityId, endpoint, provider: "openrouter" })
+      ).toEqual({
+        ok: false,
+        status: 400,
+        message: noActiveProviderKey("openrouter"),
+      });
+      expect(noActiveProviderKey("openrouter")).toBe(
+        "No active openrouter API key for this organization"
+      );
+    });
+
+    it("never returns another entity's key", async () => {
+      const endpoint = await endpointBoundToKey();
+      await addKey(entityId, "openrouter", "sk-mine");
+      const resolved = await resolver.resolve({
+        entityId: OTHER_ENTITY,
+        endpoint,
+        provider: "openrouter",
+      });
+      expect(resolved.ok).toBe(false);
     });
   });
 });

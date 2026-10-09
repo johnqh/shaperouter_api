@@ -217,7 +217,7 @@ export async function createTestLlmKey(
   entityId: string,
   data: {
     key_name: string;
-    provider: "openai" | "gemini" | "anthropic" | "lm_studio";
+    provider: "openai" | "gemini" | "anthropic" | "lm_studio" | "deepseek" | "openrouter";
     encrypted_api_key?: string;
     encryption_iv?: string;
     endpoint_url?: string;
